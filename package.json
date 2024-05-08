@@ -1,0 +1,42 @@
+{
+  "name": "stella",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "ts-jest"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.20.5",
+    "axios": "^1.6.8",
+    "dotenv": "^16.4.5",
+    "eventemitter3": "^5.0.1",
+    "gun": "^0.2020.1239",
+    "jscodeshift": "^0.15.2",
+    "jsdom": "^24.0.0",
+    "jsdom-global": "^3.0.2",
+    "net-ping": "^1.2.3",
+    "pidusage": "^3.0.2",
+    "play-sound": "^1.1.6",
+    "puppeteer": "^22.7.1",
+    "sed-lite": "^1.0.0",
+    "string.prototype.replaceall": "^1.0.10",
+    "uuid": "^9.0.1",
+    "winston": "^3.12.0",
+    "yaml": "^2.4.1",
+    "yaml-front-matter": "^4.1.1"
+  },
+  "devDependencies": {
+    "@types/jscodeshift": "^0.11.11",
+    "@types/jsdom": "^21.1.6",
+    "@types/node": "^20.11.25",
+    "@types/pidusage": "^2.0.5",
+    "@types/play-sound": "^1.1.2",
+    "@types/uuid": "^9.0.8",
+    "@types/yaml-front-matter": "^4.1.3",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2"
+  }
+}
