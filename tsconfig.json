@@ -1,20 +1,13 @@
 {
-    "compilerOptions": {
-        "outDir": "dist",
-        "moduleResolution": "node",
-        "target": "es6",
-        "module": "commonjs",
-        "strict": false,
-        "baseUrl": ".",
-        "esModuleInterop": true,
-        "skipLibCheck": true,
-        "forceConsistentCasingInFileNames": true,
-        "sourceMap": false,
-        "resolveJsonModule": true,
-        "typeRoots": ["./node_modules/@types"],
-        "downlevelIteration": false,
-        "lib": ["ES2021"]
-
-    },
+  "compilerOptions": {
+    "target": "es5",
+    "module": "commonjs",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "./dist",
+  },
+    "include": ["src/**/*.ts"],
     "exclude": ["node_modules"]
 }

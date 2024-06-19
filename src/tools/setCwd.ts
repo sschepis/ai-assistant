@@ -1,26 +1,26 @@
 export default {
     schema: {
-        "name": "eval",
-        "description": "Evaluate a JavaScript expression",
+        "name": "setCwd",
+        "description": "Set the current working directory",
         "input_schema": {
             "type": "object",
             "properties": {
-                "expression": {
+                "path": {
                     "type": "string"
                 }
             },
             "required": [
-                "expression"
+                "path"
             ]
         }
     },
     action: async (params: any) => {
         try {
-            const result = eval(params.expression);
+            process.chdir(params.path);
+            const result = process.cwd();
             return result;
-        }
-        catch (error: any) {
-            console.log(`Error evaluating JavaScript expression: ${error.message}`);
+        } catch (error: any) {
+            console.log(`Error setting current working directory: ${error.message}`);
             throw error;
         }
     },
