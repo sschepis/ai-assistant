@@ -70,7 +70,7 @@ exports.default = {
                         console.log('Generating tool...');
                         state = store_1.default.getState();
                         return [4 /*yield*/, api.callTool('callLLM', {
-                                prompt: "Generate a software function that accomplishes the given task. The software function should be generated using the below format:\n\n{\nschema: {\n\"name\": \"eval\", // function name\n\"description\": \"Evaluate a JavaScript expression and return its result\", // description includes what the function does and what it returns \n\"input_schema\": {\n\"type\": \"object\",\n\"properties\": {\n    \"expression\": {\n        \"type\": \"string\"\n    }\n},\n\"required\": [\n    \"expression\"\n]\n},\n\"output_schema\": {\n\"type\": \"any\"\n}\n},\naction: async ({ expression }: any) => {\ntry {\nreturn eval(expression);\n} catch (error: any) {\nreturn `Error evaluating JavaScript expression: ${error.message}`;\n}\n},\n}\n\nThe task is: \"".concat(task, "\"\n\nOutput ONLY THE RAW OUTPUT STARTING WITH { and ENDING WITH } WITHOUT ANY COMMENTARY"),
+                                prompt: "Generate a software function that accomplishes the given task. The software function should be generated using the below format:\n\n{\nschema: {\n\"name\": \"eval\",\n\"description\": \"Evaluate a JavaScript expression and return its result\",\n\"input_schema\": {\n\"type\": \"object\",\n\"properties\": {\n    \"expression\": {\n        \"type\": \"string\"\n    }\n},\n\"required\": [\n    \"expression\"\n]\n},\n\"output_schema\": {\n\"type\": \"any\"\n}\n},\naction: async ({ expression }: any) => {\ntry {\nreturn eval(expression);\n} catch (error: any) {\nreturn `Error evaluating JavaScript expression: ${error.message}`;\n}\n},\n}\n\nThe task is: \"".concat(task, "\"\n\nOutput ONLY THE RAW OUTPUT STARTING WITH { and ENDING WITH } WITHOUT ANY COMMENTARY"),
                                 instructions: "Your goal is to generate a software tool using Javascript that fulfills the requirements you are given. This tool is being generated in response to an arising need in the course of implementing a projject with the following state, provided for your reference. The current project state is: ".concat(JSON.stringify(state)),
                                 tools: Object.keys(api.tools).map(function (toolName) { return api.tools[toolName].schema; })
                             })];
@@ -84,3 +84,4 @@ exports.default = {
         });
     }
 };
+//# sourceMappingURL=generateTool.js.map

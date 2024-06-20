@@ -35,68 +35,122 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
         if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
     }
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-var execSync = require('child_process').execSync;
+var shelljs_1 = __importDefault(require("shelljs"));
+var fs_1 = __importDefault(require("fs"));
 /**
- * A versatile function that emulates busybox behavior in JavaScript.
+ * An asynchronous function that emulates busybox behavior in JavaScript.
  *
  * @param {string} command - The command to execute (e.g., 'ls', 'cat file.txt').
  * @param {string[]} [args=[]] - An array of arguments for the command.
  * @param {object} [options={}] - Optional settings for execution.
- * @returns {string|Buffer} - The output of the command, either as a string or Buffer.
+ * @returns {Promise<string>} - The output of the command.
  * @throws {Error} - If an invalid command is provided or execution fails.
  */
-function jsBusybox(command, args, options) {
-    if (args === void 0) { args = []; }
-    if (options === void 0) { options = {}; }
-    var supportedCommands = {
-        // File system
-        'ls': function () { return execSync("ls ".concat(args.join(' ')), options).toString().trim(); },
-        'cat': function () { return execSync("cat ".concat(args.join(' ')), options).toString(); },
-        'pwd': function () { return process.cwd(); },
-        'mkdir': function () { return execSync("mkdir ".concat(args.join(' ')), options); },
-        'touch': function () { return execSync("touch ".concat(args.join(' ')), options); },
-        'rm': function () { return execSync("rm ".concat(args.join(' ')), options); },
-        'cp': function () { return execSync("cp ".concat(args.join(' ')), options); },
-        'mv': function () { return execSync("mv ".concat(args.join(' ')), options); },
-        // System info
-        'date': function () { return execSync('date', options).toString().trim(); },
-        'hostname': function () { return execSync('hostname', options).toString().trim(); },
-        'whoami': function () { return execSync('whoami', options).toString().trim(); },
-        'uptime': function () { return execSync('uptime', options).toString().trim(); },
-        // Network
-        'ping': function () { return execSync("ping ".concat(args.join(' '), " -c 4"), options).toString(); },
-        // String manipulation
-        'echo': function () { return args.join(' '); },
-        'grep': function () { return execSync("grep ".concat(args.join(' ')), options).toString(); },
-        'sed': function () { return execSync("sed ".concat(args.join(' ')), options).toString(); },
-        'awk': function () { return execSync("awk ".concat(args.join(' ')), options).toString(); },
-        // Process management (simple examples)
-        'ps': function () { return execSync('ps', options).toString(); },
-        'kill': function () {
-            if (args.length === 0) {
-                throw new Error('kill: missing process id');
+function jsBusybox(_a) {
+    var command = _a.command, _b = _a.args, args = _b === void 0 ? [] : _b, _c = _a.options, options = _c === void 0 ? {} : _c;
+    return __awaiter(this, void 0, void 0, function () {
+        var supportedCommands, cmdFunction, result, error_1;
+        return __generator(this, function (_d) {
+            switch (_d.label) {
+                case 0:
+                    supportedCommands = {
+                        // File system
+                        'ls': function (args) {
+                            if (!Array.isArray(args)) {
+                                args = Object.values(args);
+                            }
+                            if (args.length === 0) {
+                                args = ['.']; // Default to current directory
+                            }
+                            return shelljs_1.default.ls.apply(shelljs_1.default, args).toString();
+                        },
+                        'cat': function (args) {
+                            if (!Array.isArray(args)) {
+                                args = Object.values(args);
+                            }
+                            if (args.length === 0) {
+                                throw new Error('cat: missing file');
+                            }
+                            return shelljs_1.default.cat.apply(shelljs_1.default, args).toString();
+                        },
+                        'pwd': function () { return shelljs_1.default.pwd().toString(); },
+                        'mkdir': function (args) {
+                            if (!Array.isArray(args)) {
+                                args = Object.values(args);
+                            }
+                            if (args.length === 0) {
+                                throw new Error('mkdir: missing directory');
+                            }
+                            return shelljs_1.default.mkdir.apply(shelljs_1.default, args);
+                        },
+                        'touch': function (args) {
+                            if (!Array.isArray(args)) {
+                                args = Object.values(args);
+                            }
+                            if (args.length === 0) {
+                                throw new Error('touch: missing file');
+                            }
+                            return shelljs_1.default.touch.apply(shelljs_1.default, args);
+                        },
+                        'rm': function (args) {
+                            if (!Array.isArray(args)) {
+                                args = Object.values(args);
+                            }
+                            if (args.length === 0) {
+                                throw new Error('rm: missing file');
+                            }
+                            return shelljs_1.default.rm.apply(shelljs_1.default, args);
+                        },
+                        'cp': function (args) { return shelljs_1.default.cp.apply(shelljs_1.default, args); },
+                        'mv': function (args) { return shelljs_1.default.mv.apply(shelljs_1.default, args); },
+                        // System info
+                        'date': function () { return shelljs_1.default.exec('date', options).toString(); },
+                        'hostname': function () { return shelljs_1.default.hostname().toString(); },
+                        'whoami': function () { return shelljs_1.default.exec('whoami', options).toString(); },
+                        'uptime': function () { return shelljs_1.default.exec('uptime', options).toString(); },
+                        // Network
+                        'ping': function (args) { return shelljs_1.default.exec("ping ".concat(args.join(' '), " -c 4"), options).toString(); },
+                        // String manipulation
+                        'echo': function (args) { return shelljs_1.default.echo.apply(shelljs_1.default, args).toString(); },
+                        'grep': function (args) { return shelljs_1.default.grep.apply(shelljs_1.default, args).toString(); },
+                        'sed': function (args) { return shelljs_1.default.sed.apply(shelljs_1.default, args).toString(); },
+                        'awk': function (args) { return shelljs_1.default.exec("awk ".concat(args.join(' ')), options).toString(); },
+                        // Process management (simple examples)
+                        'ps': function () { return shelljs_1.default.exec('ps', options).toString(); },
+                        'kill': function (args) {
+                            if (args.length === 0) {
+                                throw new Error('kill: missing process id');
+                            }
+                            return shelljs_1.default.exec("kill ".concat(args.join(' ')), options);
+                        },
+                        // Help
+                        'help': function () { return "Available commands:\n".concat(Object.keys(supportedCommands).join('\n')); }
+                    };
+                    cmdFunction = supportedCommands[command];
+                    if (!cmdFunction) return [3 /*break*/, 5];
+                    _d.label = 1;
+                case 1:
+                    _d.trys.push([1, 3, , 4]);
+                    return [4 /*yield*/, cmdFunction(args)];
+                case 2:
+                    result = _d.sent();
+                    // ShellJS often returns objects with stdout/stderr, so normalize to string
+                    return [2 /*return*/, result.toString ? result.toString() : result];
+                case 3:
+                    error_1 = _d.sent();
+                    throw new Error("Error executing '".concat(command, "': ").concat(error_1.message));
+                case 4: return [3 /*break*/, 6];
+                case 5: throw new Error("Invalid command: '".concat(command, "'"));
+                case 6: return [2 /*return*/];
             }
-            return execSync("kill ".concat(args.join(' ')), options);
-        },
-        // Help
-        'help': function () {
-            return "Available commands:\n".concat(Object.keys(supportedCommands).join('\n'));
-        }
-    };
-    var cmdFunction = supportedCommands[command];
-    if (cmdFunction) {
-        try {
-            return cmdFunction();
-        }
-        catch (error) {
-            throw new Error("Error executing '".concat(command, "': ").concat(error.message));
-        }
-    }
-    else {
-        throw new Error("Invalid command: '".concat(command, "'"));
-    }
+        });
+    });
 }
+module.exports = { jsBusybox: jsBusybox };
 exports.default = {
     schema: {
         "name": "busybox",
@@ -129,3 +183,56 @@ exports.default = {
         });
     }); },
 };
+// tests for the function
+// create a test file
+fs_1.default.writeFileSync('test.txt', 'Hello, world!');
+var test = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var result, error_2;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                _a.trys.push([0, 8, , 9]);
+                return [4 /*yield*/, jsBusybox('ls', ['-l'])];
+            case 1:
+                result = _a.sent();
+                console.log(result);
+                return [4 /*yield*/, jsBusybox('cat', ['./test.txt'])];
+            case 2:
+                // cat
+                result = _a.sent();
+                console.log(result);
+                return [4 /*yield*/, jsBusybox('ping', ['google.com'])];
+            case 3:
+                // ping
+                result = _a.sent();
+                console.log(result);
+                return [4 /*yield*/, jsBusybox('mkdir', ['./testdir'])];
+            case 4:
+                // mkdir
+                result = _a.sent();
+                console.log(result);
+                return [4 /*yield*/, jsBusybox('rm', ['-r', './testdir'])];
+            case 5:
+                // rm
+                result = _a.sent();
+                console.log(result);
+                return [4 /*yield*/, jsBusybox('cp', ['./test.txt', './test2.txt'])];
+            case 6:
+                // cp
+                result = _a.sent();
+                console.log(result);
+                return [4 /*yield*/, jsBusybox('mv', ['./test2.txt', './test3.txt'])];
+            case 7:
+                // mv
+                result = _a.sent();
+                console.log(result);
+                return [3 /*break*/, 9];
+            case 8:
+                error_2 = _a.sent();
+                console.error(error_2);
+                return [3 /*break*/, 9];
+            case 9: return [2 /*return*/];
+        }
+    });
+}); };
+test();

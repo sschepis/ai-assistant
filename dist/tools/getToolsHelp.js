@@ -51,3 +51,4 @@ exports.default = {
         });
     }); }
 };
+//# sourceMappingURL=getToolsHelp.js.map

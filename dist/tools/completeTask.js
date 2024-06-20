@@ -63,3 +63,4 @@ exports.default = {
         }); });
     } // Use the zustand store's completeCurrentTask method
 };
+//# sourceMappingURL=completeTask.js.map

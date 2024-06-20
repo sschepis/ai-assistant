@@ -9,3 +9,4 @@ var WorkerStates;
     WorkerStates["COMPLETE_TASK"] = "COMPLETE_TASK";
     WorkerStates["COMPLETE_SESSION"] = "COMPLETE_SESSION";
 })(WorkerStates = exports.WorkerStates || (exports.WorkerStates = {}));
+//# sourceMappingURL=constants.js.map

@@ -1,0 +1,1105 @@
+.//tools/callLLM.ts
+import axios from 'axios';
+import { WorkerStates } from '../constants';
+import useStore from '../store'; // Import the zustand store
+
+export default {
+    schema: {
+        "name": "callLLM",
+        "description": "Call the LLM with the given prompt and instructions (system prompt).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string"
+                },
+                "instructions": {
+                    "type": "string"
+                },
+                "tools": {
+                    "type": "boolean"
+                },
+            },
+            "required": [
+                "prompt",
+                "instructions"
+            ]
+        }
+    },
+    action: async ({ prompt, instructions, tools, model = 'claude-3-opus-20240229' }: any, api: any) => {
+        try {
+            const state = useStore.getState(); // Get the current state from the zustand store
+            const schemas = tools //? Object.keys(tools).map((toolName: any) => tools[toolName].schema) : [];
+            const response = await axios.post('https://api.anthropic.com/v1/messages', {
+                model: model, max_tokens: 4000,
+                system: instructions, tools: schemas,
+                messages: [{ role: 'user', content: prompt, },],
+            }, {
+                headers: {
+                    'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY,
+                    'anthropic-version': '2023-06-01', 'anthropic-beta': 'tools-2024-04-04',
+                },
+            });
+            const data = response.data;
+            let result: any = [];
+            let toolCalls: any = [];
+            if (Array.isArray(data.content)) {
+                data.content = data.content.map((item: any) => {
+                    if (item.type === 'tool_use') {
+                        item.parameters = item.input;
+                        toolCalls.push(item);
+                        console.log('tool_call', item);
+                    } else {
+                        try {
+                            const ret = JSON.parse(item.text);
+                            if (ret.tools) {
+                                toolCalls = [...toolCalls, ...ret.tools];
+                            } else {
+                                result.push(ret);
+                            }
+                            if(ret.percentComplete) {
+                                useStore.setState({ ...state, percentComplete: ret.percentComplete }); // Update the state using zustand
+                            }
+                            if(ret.currentTaskComplete) {
+                                if(state.currentTask) console.log(`Task ${state.currentTask.name} is complete.`);
+                                useStore.getState().completeCurrentTask();
+                            }
+                        }
+                        catch (error: any) {
+                            result.push(item.text);
+                            console.log(item.text);
+                        }
+                    }
+                });
+                const toolsResult = await api.callTools(toolCalls, state); // Call the callTools function with the updated state
+                result = [...result, ...toolsResult];
+            }
+            return result;
+        } catch (error: any) {
+            throw error;
+        }
+    }
+}
+.//tools/decideNextAction.ts
+import useStore from '../store'; // Import the zustand store
+
+export default {
+    schema: {
+        "name": "decideNextAction",
+        "description": "Decide the next action to take based on the current state",
+        "input_schema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    action: async (_: any, api: any) => {
+        console.log('Deciding next action...');
+        const state = useStore.getState(); // Get the current state from the zustand store
+        const remainingTasks = state.remainingTasks;
+        const currentTask = state.currentTask;
+        if (remainingTasks.length === 0 && !currentTask) { return api.callTool('completeSession', {}); }
+        const results = await api.callTool('callLLM', {
+            prompt:`Your goal is to determine the next course of action to take given the current project state. Typically this will involve complete the current task using the \`completeTask\` function to complete the task, but you can call any function you deem appropriate. The current project state is: ${JSON.stringify(state)}`,
+            instructions: 'You are an expert agent operating in an autonomous execution context. Your goal is to determine the next course of action to take given the current project state. The current workspace folder is: ' + process.cwd() + '. You are operating on a ' + process.platform + ' machine.',
+            tools: Object.keys(api.tools).map((toolName: any) => api.tools[toolName].schema)
+        });
+        const nextAction = results[0].text || results[0];
+        console.log(`Next action: ${nextAction}`);
+        return nextAction;
+    }
+}.//tools/cwd.ts
+export default {
+    schema: {
+        "name": "cwd",
+        "description": "Get the current working directory",
+        "input_schema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    action: async () => {
+        try {
+            const result = process.cwd();
+            return result;
+        } catch (error: any) {
+            console.log(`Error getting current working directory: ${error.message}`);
+            throw error;
+        }
+    },
+}.//tools/completeSession.ts
+import { WorkerStates } from '../constants';
+import useStore from '../store'; // Import the zustand store
+
+export default {
+    schema: {
+        "name": "completeSession",
+        "description": "Complete the current session",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "task"
+            ] 
+        }
+    },
+    action: async ({ task }: any, api: any) => {
+        console.log('session completed')
+        useStore.getState().completeCurrentSession()
+        return 'Session completed.'
+    }
+}.//tools/setState.ts
+import { WorkerStates } from '../constants';
+import useStore from '../store'; // Import the zustand store
+
+export default {
+    schema: {
+        "name": "setState",
+        "description": "Set a state object by key",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "state": {
+                    "type": "object"
+                }
+            },
+            "required": [
+                "state"
+            ]
+        }
+    },
+    action: async ({ state }: any) => useStore.setState(state) // Use the zustand store's setState method
+}.//tools/saveTool.ts
+import useStore from '../store'; // Import the zustand store
+
+export default {
+    schema: {
+        "name": "saveTool",
+        "description": "Save a tool to the tools folder.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "path",
+                "content"
+            ]
+        }
+    },
+    action: async ({ content }: any, api: any) => {
+        try {
+            api.callTool('save_file', { path: `./tools/${content.name}.ts`, content: content });
+        }
+        catch (error: any) {
+            return `Error saving tool: ${error.message}`;
+        }
+    }
+}.//tools/eval.ts
+export default {
+    schema: {
+        "name": "eval",
+        "description": "Evaluate a JavaScript expression",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "expression": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "expression"
+            ]
+        }
+    },
+    action: async (params: any) => {
+        try {
+            const result = eval(params.expression);
+            return result;
+        }
+        catch (error: any) {
+            console.log(`Error evaluating JavaScript expression: ${error.message}`);
+            throw error;
+        }
+    },
+}.//tools/_.ts
+.//tools/performTask.ts
+import useStore from '../store'; // Import the zustand store
+
+export default {
+    schema: {
+        "name": "performTask",
+        "description": "Perform the given task. Generates work products and updates the project state.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "task"
+            ]
+        }
+    },
+    action: async ({ task }: any, api: any) => {
+        const state = useStore.getState(); // Get the current state from the zustand store
+        console.log(`Performing task: ${task}`);
+        const toolsHelp = JSON.stringify(await api.callTool('getToolsHelp', {}));
+        const resp: any = async (_useTools: boolean, firstResponse: string): Promise<any> => {
+            const theTools: any = Object.keys(api.tools).map((toolName: any) => api.tools[toolName].schema);
+            delete theTools.getNextAction;
+
+            let response = await api.callTool('callLLM', {
+                prompt: _useTools ? 
+                `Your goal is to perform the given task to the best of your abilities using a creative combination of your innate skills and tooling.\n\nYou previously determined that you need tools to complete the following task:\n\nTask: ${task}\n\nYou mentioned the following tools:\n${firstResponse}\n\nCurrent project state: ${JSON.stringify(state)}\n\nRecent history: ${JSON.stringify(state.history || "No history yet.")} yeah\n\nInstructions:\n- Use the provided tools to perform the task and generate the work product(s).\n- Determine the overall percent completion of the project and update the percent complete field in the project state.` 
+                : 
+                `Your goal is to perform the given task to the best of your abilities using a creative combination of your innate skills and tooling.\n\nTask: ${task}\n  \nCurrent project state: ${JSON.stringify(state)}\n  \nRecent history: ${JSON.stringify(state.history || "No history yet")}\n  \nInstructions:\n- Analyze the task and determine if you can complete it without using any tools.\n- If you can complete the task without tools, perform the task and return the generated work product(s) in the specified JSON format. DO NOT EMBED TOOL CALLS IN WORK PRODUCTS!\n- If you require tools to complete the task, list the specific tools you would use and describe how you would use them to perform the task. Do not actually call the tools.\n\nThe list of available tools are: ${toolsHelp}\n  \nResponse Format (without tools):\nIf completing the task without tools, return the work product(s) in the following JSON format (exclude the angled brackets):\n<{\n  "workProducts": [\n    {\n      "type": "file/chat",\n      "name": <optional_name>,\n      "data": <work_product_content>\n    },\n    ...n  ]\n}>\n  \nIf tools are required, provide your response in json format as follows:\n{\n  "tools": [{\n    name: "tool_name",\n    parameters: {\n      "param1": "value1",\n      "param2": "value2",\n      ...\n    }\n  }, ...]\n}\n\n*** YOU MUST ONLY RETURN JSON FORMATTED DATA. DO NOT INCLUDE ANY ADDITIONAL TEXT OR CODE BLOCKS IN YOUR RESPONSE. ***`,
+                instructions: 'Your goal is to perform the given task to the best of your abilities. The current workspace folder is: ' + process.cwd() + '. This machine is a ' + process.platform + ' machine. OUTPUT JSON ONLY!!!',
+                tools: _useTools ? theTools : [],
+            });
+            try {   
+                if(!Array.isArray(response)) response = [response];
+                let toolsUsed = false;
+                const results: any = [];
+                for(const ri of response) {
+                    if (!_useTools && ri.tools) {
+                        if (!Array.isArray(ri.tools)) {
+                            ri.tools = [ri.tools];
+                        }
+                        toolsUsed = true;
+                        return await api.callTools(ri.tools, state);
+                    } else if (!_useTools && ri.workProducts) {
+                        results.push(ri.workProducts);
+                    } else {
+                        results.push(ri);
+                    }
+                }    
+                if(!toolsUsed) {
+                    return await resp(true, JSON.stringify(results));
+                } else {
+                    return results;
+                }
+            } catch (error: any) {
+                return response[0].text || response[0];
+            }
+        }
+        return resp(false, '');
+    }
+}.//tools/saveFile.ts
+import { WorkerStates } from '../constants';
+import fs from 'fs'; 
+import useStore from '../store'; // Import the zustand store
+
+export default {
+    schema: {
+        "name": "saveFile",
+        "description": "Save a file to the filesystem. Paths are reltive to the program install directory.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "path",
+                "content"
+            ]
+        }
+    },
+    action: async ({ path, content }: any) => {
+        try {
+            // get the program install directory
+            const installDir = __dirname;
+            // write the file
+            const filePath = path.startsWith('/') ? path : `${installDir}/${path}`;
+            fs.writeFileSync(filePath, content);
+            return `File saved to ${filePath}`;
+        }
+        catch (error: any) {
+            return `Error saving file: ${error.message}`;
+        }
+    }
+}.//tools/say_aloud.ts
+import fs from 'fs';
+function getNonce() {
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+}
+export default {
+    "schema": {
+      "name": "say",
+      "description": "Say the given text aloud using a natural voice",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text to say"
+          },
+          "voice": {
+            "type": "string",
+            "description": "The voice to use (can be 'male' or 'female'). If not specified, the default female voice will be used"
+          }
+        },
+        "required": ["text"]
+      }
+    },
+    action: async ({ text, voice }: any, state: any, api: any) => {
+      try {
+        const PlayHT = await import('playht');
+        const player = (await import('play-sound') as any)((error: any) => {
+          if (error) {
+            api.log(`Error playing sound: ${error}`, 'error');
+          }
+        });
+        const apiKey = process.env.PLAYHT_AUTHORIZATION;
+        const userId = process.env.PLAYHT_USER_ID;
+        const maleVoice = process.env.PLAYHT_MALE_VOICE;
+        const femaleVoice = process.env.PLAYHT_FEMALE_VOICE;
+        if (!voice) voice = process.env.PLAYHT_FEMALE_VOICE;
+        if (!apiKey || !userId || !maleVoice || !femaleVoice) {
+          const missing = [];
+          if (!apiKey) missing.push('playHT.apiKey');
+          if (!userId) missing.push('playHT.userId');
+          if (!maleVoice) missing.push('playHT.maleVoice');
+          if (!femaleVoice) missing.push('playHT.femaleVoice');
+          return `Missing configuration: ${missing.join(', ')} in configuration file. Please ask the user to provide the missing configuration using the ask_for_data tool.`;
+        }
+        PlayHT.init({ apiKey: apiKey, userId: userId, });
+        const speakSentence = async (sentence: any, voice: any) => {
+          if (!sentence) return;
+          const stream = await PlayHT.stream(sentence, {
+            voiceEngine: "PlayHT2.0-turbo",
+            voiceId: voice === 'male' ? maleVoice : femaleVoice,
+          });
+          const chunks: any = [];
+          stream.on("data", (chunk) => chunks.push(chunk));
+          return new Promise((resolve, reject) => {
+            stream.on("end", () => {
+              const buf = Buffer.concat(chunks);
+              const filename = `${getNonce()}.mp3`;
+              fs.writeFileSync(filename, buf);
+              player.play(filename, function (err: any) {
+                fs.unlinkSync(filename);
+                resolve(`done`);
+              });
+            });
+          })
+        }
+        let sentenceSplit = await api.callTool('callLLM', {
+            prompt: `You transform some given content into sentence-long fragments meant to be delivered to a text-to-speech agent. 
+        **Output your results as a JSON object with the format { fragments: string[] } Output RAW JSON only**
+        This means you remove and rewrite content containing things like urls and file names so that they sound file when spoken. 
+        For example, when you see 'https://google.com/foo-2' you output something like, 'https colon slash slash google dot com slash foo dash two'
+        When creating your fragments, you should break fragments up by sentence if possible. Don't break up the sentence in places where having it in two fragments would sound weird.
+        **Output your results as a JSON object with the format { fragments: string[] } Output RAW JSON only**`,
+            instructions: `You transform some given content into sentence-long fragments meant to be delivered to a text-to-speech agent. 
+        **Output your results as a JSON object with the format { fragments: string[] } Output RAW JSON only**
+        This means you remove and rewrite content containing things like urls and file names so that they sound file when spoken. 
+        For example, when you see 'https://google.com/foo-2' you output something like, 'https colon slash slash google dot com slash foo dash two'
+        When creating your fragments, you should break fragments up by sentence if possible. Don't break up the sentence in places where having it in two fragments would sound weird.
+        **Output your results as a JSON object with the format { fragments: string[] } Output RAW JSON only**`,
+            tools: api.tools
+        });
+       
+        sentenceSplit = JSON.parse(sentenceSplit.choices[0].message.content);
+        const sentences = sentenceSplit.fragments;
+        const consumeSentence = async () => {
+          return new Promise((resolve, reject) => {
+            const loop: any = async () => {
+              const sentence = sentences.shift();
+              if (!sentence) return resolve('done');
+              await speakSentence(sentence, voice);
+              return await loop();
+            };
+            return loop();
+          });
+        };
+        await consumeSentence();
+        return text;
+      } catch (error: any) {
+        api.log(`Error saying text aloud: ${error.message}`, 'error');
+        throw error;
+      }
+    },
+    nextState: null
+  }.//tools/generateTool.ts
+import useStore from '../store'; // Import the zustand store
+
+export default {
+    schema: {
+        "name": "generateTool",
+        "description": "Generate a software tool based on the provided task, and return the generated function as a string",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "task",
+                "format"
+            ]
+        },
+        "output_schema": {
+            "type": "string"
+        }
+    },
+    action: async ({ task }: any, api: any) => {
+        console.log('Generating tool...');
+        const state = useStore.getState(); // Get the current state from the zustand store
+        const results = await api.callTool('callLLM', {
+            prompt: `Generate a software function that accomplishes the given task. The software function should be generated using the below format:
+
+{
+schema: {
+"name": "eval", // function name
+"description": "Evaluate a JavaScript expression and return its result", // description includes what the function does and what it returns 
+"input_schema": {
+"type": "object",
+"properties": {
+    "expression": {
+        "type": "string"
+    }
+},
+"required": [
+    "expression"
+]
+},
+"output_schema": {
+"type": "any"
+}
+},
+action: async ({ expression }: any) => {
+try {
+return eval(expression);
+} catch (error: any) {
+return \`Error evaluating JavaScript expression: \${error.message}\`;
+}
+},
+}
+
+The task is: "${task}"
+
+Output ONLY THE RAW OUTPUT STARTING WITH { and ENDING WITH } WITHOUT ANY COMMENTARY`,
+            instructions: `Your goal is to generate a software tool using Javascript that fulfills the requirements you are given. This tool is being generated in response to an arising need in the course of implementing a projject with the following state, provided for your reference. The current project state is: ${JSON.stringify(state)}`,
+            tools: Object.keys(api.tools).map((toolName: any) => api.tools[toolName].schema)
+        });
+        const nextAction = results[0].text || results[0];
+        console.log(`Next action: ${nextAction}`);
+        return nextAction;
+    }
+}.//tools/reset.ts
+import { WorkerStates } from '../constants';
+export default {
+    schema: {
+        "name": "reset",
+        "description": "Reset the process state.",
+        "input_schema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    action: async (_: any, api: any) => { api.store.setState(api.store.getState().initialState); return 'State reset.' } // Reset the state to the initial state using zustand
+}.//tools/setCwd.ts
+export default {
+    schema: {
+        "name": "setCwd",
+        "description": "Set the current working directory",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "path"
+            ]
+        }
+    },
+    action: async (params: any) => {
+        try {
+            process.chdir(params.path);
+            const result = process.cwd();
+            return result;
+        } catch (error: any) {
+            console.log(`Error setting current working directory: ${error.message}`);
+            throw error;
+        }
+    },
+}.//tools/bash.ts
+export default {
+    schema: {
+        "name": "bash",
+        "description": "Run a bash command",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string"
+                },
+                "args": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "command"
+            ]
+        }
+    },
+    action: async (params: any) => {
+        try {
+            const child_process = await import('child_process');
+            const { exec } = child_process;
+            const command = params.command;
+            const args = params.args || [];
+            return new Promise((resolve, reject) => {
+                exec(`${command} ${args.join(' ')}`, (error: any, stdout: any, stderr: any) => {
+                    if (error) {
+                        console.log(`Error executing command: ${error.stack}`);
+                        return resolve(`${error.stack}`);
+                    }
+                    if (stderr) {
+                        console.log(`Error executing command: ${stderr}`);
+                        return resolve(`${stderr}`);
+                    }
+                    if (!stdout || stdout.trim().length === 0) {
+                        stdout = `Command ${command} executed successfully.`;
+                    }
+                    resolve(stdout);
+                });
+            });
+        } catch (error: any) {
+            console.log(`Error executing command: ${error.message}`);
+            throw error;
+        }
+    },
+    nextState: null,
+}.//tools/completeTask.ts
+import { WorkerStates } from '../constants';
+import useStore from '../store'; // Import the zustand store
+
+export default {
+    schema: {
+        "name": "completeTask",
+        "description": "Complete the current task",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "task"
+            ]
+        }
+    },
+    action: async ({ task }: any) => useStore.getState().completeCurrentTask() // Use the zustand store's completeCurrentTask method
+}.//tools/reviewWorkProducts.ts
+import { WorkerStates } from '../constants';
+
+export default {
+    schema: {
+        "name": "reviewWorkProducts",
+        "description": "Review the generated work product for the current task, submit a updated work product and close the task if its complete",
+        "input_schema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    action: async (_: any, api: any) => {
+        console.log('Reviewing work products...');
+        const state = api.store.getState(); // Get the current state from the zustand store
+        const currentTask = state.currentTask;
+        const workProducts = state.currentTask?.workProducts;
+        if (!workProducts) { return 'No work products found for the task ' + currentTask; }
+        const ret = await api.callTool('callLLM', {
+            prompt: `Your goal is to review the generated work products for the current task and output a refined work product, whether the current task is complete, and an updated percent complete for the overall project IN JSON FORMAT with format { workProduct: string, currentTaskComplete: boolean, percentComplete: number }.  The current project state is: ${JSON.stringify(state)}. Return your response in JSON format using format { workProduct: string, currentTaskComplete: boolean, percentComplete: number }.`,
+            instructions: 'You are an expert agent operating in an autonomous execution context. Your goal is to review the generated work products for the current task and output an updated work product and percentComplete estimate. The current workspace folder is: ' + process.cwd() + '. You are operating on a ' + process.platform + ' machine. *** RETURN ALL RESPONSES USING FORMAT { workProduct: string, currentTaskComplete: boolean, percentComplete: number } ***',
+            tools: []
+        })
+        try {
+            let item = ret[0];
+            try {
+                item = JSON.parse(item.text || item);
+            } catch (error: any) { }
+            if(item.workProduct) item.addWorkProductToCurrentTask(item.workProduct);
+            if(item.percentComplete) state.setState({ ...state, percentComplete: item.percentComplete });
+            if (item.currentTaskComplete) {
+                console.log(`Task ${state.currentTask.name} is complete.`);
+                state.completeCurrentTask();
+            }
+        } catch (error: any) { }
+    }
+}.//tools/getToolsHelp.ts
+export default {
+    schema: {
+        "name": "getToolsHelp",
+        "description": "Get help for the available tools",
+        "input_schema": {
+            "type": "object",
+            "properties": {}
+        },
+    },
+    action: async (_: any, api: any) => { 
+        return Object.keys(api.tools).map((toolName: any) => (`${toolName}: ${api.tools[toolName].schema.description}`));
+    }
+}.//tools/listTools.ts
+import fs from 'fs';
+
+export default {
+    schema: {
+        "name": "listTools",
+        "description": "List either just loaded tools or all tools. Set all to true to list all tools. Returns an array of tool names.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "all": {
+                    "type": "boolean"
+                }
+            }
+        }
+    },
+    action: async ({ all }: any, api: any) => {
+        if (all) {
+            const tools = fs.readdirSync('./tools');
+            return tools.map((tool: string) => tool.replace('.ts', ''));
+        } else {
+            return Object.keys(api.tools);
+        }
+    }
+}.//agent.ts
+import { EventEmitter } from "eventemitter3";
+import useStore from "./store";
+import fs from 'fs';
+import { z } from 'zod';
+
+export class Assistant extends EventEmitter {
+
+    tools: any;
+    store: any;
+
+    initialState: any = {
+        thoughts: '',
+        remainingTasks: [],
+        currentTask: null,
+        completedTasks: [],
+        percentComplete: 0,
+
+    };
+
+    stateSchema = z.object({
+        thoughts: z.string().optional(),
+        remainingTasks: z.array(z.string()).optional(),
+        currentTask: z.object({
+            name: z.string(),
+            workProducts: z.array(z.string()),
+            lastResponse: z.string().optional(),
+        }).nullable(),
+        completedTasks: z.array(
+            z.object({
+                name: z.string(),
+                workProducts: z.array(z.string()),
+            })
+        ).default([]),
+        percentComplete: z.number().min(0).max(100).default(0),
+    });
+
+    async callTools(tools: any, state: any) {
+        const results: any = [];
+        for (const tool of tools) {
+            if (tool.type === 'text') {
+                this.emit('text', tool.text);
+                results.push(tool.text);
+                continue;
+            }
+            tool.command = tool.command || tool.name;
+            tool.parameters = tool.params || tool.parameters;
+            this.emit('log', `Calling tool: ${tool.command} with parameters: ${JSON.stringify(tool.parameters)}`);
+            const toolResult = await this.callTool(tool.name, tool.parameters);
+            this.emit('log', `Tool response: ${toolResult}`);
+            results.push(toolResult);
+        }
+        return results;
+    }
+
+    async callTool(toolName: string, params: any) { return await this.tools[toolName].action(params, this); }
+
+    constructor() {
+        super();
+
+        this.callTools = this.callTools.bind(this);
+        this.callTool = this.callTool.bind(this);
+
+        this.tools = {
+            loadTools: {
+                schema: {
+                    "name": "loadTools",
+                    "description": "Load tools from the tools folder.",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                action: async (params: any, api: any) => {
+                    try {
+                        const tools = fs.readdirSync(__dirname + '/tools');
+                        for (const tool of tools) {
+                            const toolObj = (await import(__dirname + `/tools/${tool}`));
+                            api.tools[toolObj.default.schema.name] = toolObj.default;
+                        }
+                        return Object.keys(api.tools);
+                    } catch (error: any) {
+                        return `Error loading tools: ${error.message}`;
+                    }
+                }
+            },
+            callTool: {
+                schema: {
+                    "name": "callTool",
+                    "description": "Call a tool by name with the given parameters.",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "tool": {
+                                "type": "string"
+                            },
+                            "parameters": {
+                                "type": "object"
+                            }
+                        },
+                        "required": [
+                            "tool",
+                            "parameters"
+                        ]
+                    }
+                },
+                action: async ({ tool, parameters }: any, api: any) => {
+                    return api.callTool(tool, parameters);
+                }
+            },
+        }
+
+        this.store = useStore;
+
+        this.callTool('loadTools', {}).then(console.log).catch(console.error);
+    }
+
+    async callAgent(input: string, onUpdate: any) {
+        const chalk: any = (await import('chalk')).default;
+        const boxen: any = (await import('boxen')).default;
+        this.on('text', onUpdate);
+        try {
+            useStore.setState({
+                thoughts: '',
+                completedTasks: [],
+                remainingTasks: [input],
+                currentTask: { name: input, workProducts: [] },
+                percentComplete: 0
+            });
+            while (useStore.getState().remainingTasks.length > 0) {
+                try {
+                    const task = useStore.getState().currentTask?.name;
+                    if (!task) break;
+                    this.emit('text', chalk.bold.blue(`Performing task: ${task}`));
+                    let response = await this.callTool('performTask', { task });
+                    response = Array.isArray(response) ? response.join(' ') : response;
+                    this.emit('text', chalk.green(`${boxen(JSON.stringify(response), { padding: 1 })}`));
+                    useStore.getState().setCurrentTaskResponse(response);
+                    useStore.getState().addWorkProductToCurrentTask(response);
+                    if (useStore.getState().percentComplete === 100) {
+                        if (useStore.getState().remainingTasks.length === 0) {
+                            break;
+                        }
+                    }
+                    await this.callTool('reviewWorkProducts', {});
+                    const nextAction = await this.callTool('decideNextAction', {});
+                    if (nextAction === 'Session completed.') { break; }
+                }
+                catch (error) {
+                    console.error(chalk.red(error));
+                }
+            }
+        } catch (error) {
+            console.error(chalk.red(error));
+        }
+    }
+}
+
+import readline from 'readline';
+
+let rl: any
+const assistant = new Assistant();
+
+
+async function main() {
+    const chalk: any = (await import('chalk')).default;
+    const { highlight } = await import('cli-highlight');
+    console.log(chalk.bold.yellow('AI Assistant CLI 1.0.0'));
+    setTimeout(() => {
+        rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+            prompt: chalk.bold.green('> ')
+        })
+            .on('close', () => {
+                process.exit(0);
+            });
+        rl.on('line', async (input: any) => {
+            try {
+                await assistant.callAgent(input, (text: any) => {
+                    const lines = text.split('\n');
+                    lines.forEach((line: string) => console.log(highlight(line, { ignoreIllegals: true })));
+                });
+            } catch (error) {
+                console.error(chalk.red(error));
+            } finally {
+                rl.prompt();
+            }
+        });
+        rl.prompt();
+    }, 100);
+}
+main().then(()=>{}).catch(console.error);
+.//busybox.ts
+const { execSync } = require('child_process');
+
+/**
+ * A versatile function that emulates busybox behavior in JavaScript.
+ *
+ * @param {string} command - The command to execute (e.g., 'ls', 'cat file.txt').
+ * @param {string[]} [args=[]] - An array of arguments for the command.
+ * @param {object} [options={}] - Optional settings for execution.
+ * @returns {string|Buffer} - The output of the command, either as a string or Buffer.
+ * @throws {Error} - If an invalid command is provided or execution fails.
+ */
+function jsBusybox(command: any, args: string[] = [], options: object = {}): string | Buffer {
+  const supportedCommands: any = {
+    // File system
+    'ls': () => execSync(`ls ${args.join(' ')}`, options).toString().trim(),
+    'cat': () => execSync(`cat ${args.join(' ')}`, options).toString(),
+    'pwd': () => process.cwd(), // No need for execSync here
+    'mkdir': () => execSync(`mkdir ${args.join(' ')}`, options),
+    'touch': () => execSync(`touch ${args.join(' ')}`, options),
+    'rm': () => execSync(`rm ${args.join(' ')}`, options),
+    'cp': () => execSync(`cp ${args.join(' ')}`, options),
+    'mv': () => execSync(`mv ${args.join(' ')}`, options),
+
+    // System info
+    'date': () => execSync('date', options).toString().trim(),
+    'hostname': () => execSync('hostname', options).toString().trim(),
+    'whoami': () => execSync('whoami', options).toString().trim(),
+    'uptime': () => execSync('uptime', options).toString().trim(),
+
+    // Network
+    'ping': () => execSync(`ping ${args.join(' ')} -c 4`, options).toString(), // Ping with 4 packets by default
+
+    // String manipulation
+    'echo': () => args.join(' '),
+    'grep': () => execSync(`grep ${args.join(' ')}`, options).toString(),
+    'sed': () => execSync(`sed ${args.join(' ')}`, options).toString(), 
+    'awk': () => execSync(`awk ${args.join(' ')}`, options).toString(),
+
+    // Process management (simple examples)
+    'ps': () => execSync('ps', options).toString(),
+    'kill': () => {
+      if (args.length === 0) {
+        throw new Error('kill: missing process id');
+      }
+      return execSync(`kill ${args.join(' ')}`, options);
+    },
+
+    // Help
+    'help': () => {
+      return `Available commands:\n${Object.keys(supportedCommands).join('\n')}`;
+    }
+  };
+
+  const cmdFunction = supportedCommands[command];
+
+  if (cmdFunction) {
+    try {
+      return cmdFunction();
+    } catch (error: any) {
+      throw new Error(`Error executing '${command}': ${error.message}`);
+    }
+  } else {
+    throw new Error(`Invalid command: '${command}'`);
+  }
+}
+
+export default {
+  schema: {
+      "name": "busybox",
+      "description": "A versatile function that emulates busybox behavior in JavaScript.",
+      "input_schema": {
+          "type": "object",
+          "properties": {
+              "command": {
+                  "type": "string",
+                  "description": "The command to execute (e.g., 'ls', 'cat file.txt')."
+              },
+              "args": {
+                  "type": "array",
+                  "description": "An array of arguments for the command."
+              },
+              "options": {
+                  "type": "object",
+                  "description": "Optional settings for execution."
+              }
+          }
+      },
+      "output_schema": {
+          "type": "string",
+          "description": "The output of the command, either as a string or Buffer."
+      }
+  },
+  action: async (params: any, api: any) => {
+      return jsBusybox(params.command, params.args, params.options);
+  },
+}.//constants.ts
+export interface Tool {
+    schema: any,
+    action: (params: any, api: any) => any
+}
+
+export interface Action {
+    type: string,
+    payload: any
+}
+
+export enum WorkerStates {
+    RESET = 'RESET',
+    SET_STATE = 'SET_STATE',
+    SET_PERCENT_COMPLETE = 'SET_PERCENT_COMPLETE',
+    COMPLETE_TASK = 'COMPLETE_TASK',
+    COMPLETE_SESSION = 'COMPLETE_SESSION'
+}
+
+export interface Task {
+    name: string;
+    workProducts: string[];
+    lastResponse?: string;
+}
+
+export interface State {
+    thoughts: string;
+    finalOutput: string;
+    completedTasks: Task[];
+    remainingTasks: string[];
+    history: any[];
+    currentTask: Task | null;
+    percentComplete: number;
+    setRemainingTasks: (tasks: string[]) => void;
+    setCurrentTaskResponse: (response: string) => void;
+    addWorkProductToCurrentTask: (workProduct: string) => void;
+    completeCurrentTask: () => void;
+    completeCurrentSession: () => void;
+    generateFormattedRepresentation: () => string;
+    setPercentComplete: (percent: number) => void;
+}
+.//store.ts
+
+import { create } from 'zustand';
+import { State } from './constants';
+
+const useStore = create<State>((set, get) => ({
+    thoughts: '',
+    finalOutput: '',
+    completedTasks: [],
+    remainingTasks: [],
+    history: [],
+    currentTask: null,
+    percentComplete: 0,
+
+    setRemainingTasks: (tasks: string[]) => {
+        set((state) => ({
+            remainingTasks: tasks,
+            currentTask: tasks.length > 0 ? { name: tasks[0], workProducts: [] } : null,
+        }));
+    },
+
+    setCurrentTaskResponse: (response: string) => {
+        set((state) => ({
+            currentTask: state.currentTask ? { ...state.currentTask, lastResponse: response } : null,
+        }));
+    },
+
+    addWorkProductToCurrentTask: (workProduct: string) => {
+        set((state) => ({
+            currentTask: state.currentTask
+                ? { ...state.currentTask, workProducts: [...state.currentTask.workProducts, workProduct] }
+                : null,
+        }));
+    },
+
+    addHistory: (entry: string) => {
+        set((state) => ({ history: [...state.history, entry] }));
+    },
+
+    setPercentComplete: (percent: number) => {
+        set({ percentComplete: percent });
+    },
+
+    completeCurrentTask: () => {
+        set((state) => {
+            if (!state.currentTask) return {};
+
+            const completedTask = { name: state.currentTask.name, workProducts: state.currentTask.workProducts };
+            const remainingTasks = state.remainingTasks.slice(1);
+            const currentTask = remainingTasks.length > 0 ? { name: remainingTasks[0], workProducts: [] } : null;
+            const percentComplete = remainingTasks.length === 0 ? 100 : state.percentComplete;
+
+            return {
+                completedTasks: [...state.completedTasks, completedTask],
+                remainingTasks,
+                currentTask,
+                percentComplete,
+            };
+        });
+    },
+
+    completeCurrentSession: () => {
+        set((state) => ({
+            completedTasks: [],
+            remainingTasks: [],
+            history: [ ...state.history, state.generateFormattedRepresentation() ],
+            currentTask: null,
+            percentComplete: 0,
+        }));
+    },
+
+    generateFormattedRepresentation: (showHistory = false) => {
+        const state = get();
+        const thoughts = state.thoughts ? `Thoughts: ${state.thoughts}\n` : '';
+        const completedTasks = state.completedTasks.length > 0
+            ? `Completed Tasks:\n${state.completedTasks.map((task) => `  - ${task.name} (${task.workProducts.join(', ')})`).join('\n')}\n`
+            : '';
+        const currentTask = state.currentTask ? `Current Task: ${state.currentTask.name} (${state.currentTask.workProducts.join(', ')})\n` : '';
+        const remainingTasks = state.remainingTasks.length > 0 ? `Remaining Tasks: ${state.remainingTasks.join(', ')}\n` : '';
+        const percentComplete = `Percent Complete: ${state.percentComplete}%`;
+
+        const out =  `${thoughts}${completedTasks}${currentTask}${remainingTasks}${percentComplete}`;
+        if (showHistory) {
+            return `${out}\nHistory:\n${state.history.join('\n')}`;
+        }
+        return out;
+    }
+}));
+
+export default useStore;

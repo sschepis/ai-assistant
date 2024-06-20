@@ -76,7 +76,7 @@ export default {
         For example, when you see 'https://google.com/foo-2' you output something like, 'https colon slash slash google dot com slash foo dash two'
         When creating your fragments, you should break fragments up by sentence if possible. Don't break up the sentence in places where having it in two fragments would sound weird.
         **Output your results as a JSON object with the format { fragments: string[] } Output RAW JSON only**`,
-            tools: api.tools
+            tools: []
         });
        
         sentenceSplit = JSON.parse(sentenceSplit.choices[0].message.content);

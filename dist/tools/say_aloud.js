@@ -154,7 +154,7 @@ exports.default = {
                         return [4 /*yield*/, api.callTool('callLLM', {
                                 prompt: "You transform some given content into sentence-long fragments meant to be delivered to a text-to-speech agent. \n        **Output your results as a JSON object with the format { fragments: string[] } Output RAW JSON only**\n        This means you remove and rewrite content containing things like urls and file names so that they sound file when spoken. \n        For example, when you see 'https://google.com/foo-2' you output something like, 'https colon slash slash google dot com slash foo dash two'\n        When creating your fragments, you should break fragments up by sentence if possible. Don't break up the sentence in places where having it in two fragments would sound weird.\n        **Output your results as a JSON object with the format { fragments: string[] } Output RAW JSON only**",
                                 instructions: "You transform some given content into sentence-long fragments meant to be delivered to a text-to-speech agent. \n        **Output your results as a JSON object with the format { fragments: string[] } Output RAW JSON only**\n        This means you remove and rewrite content containing things like urls and file names so that they sound file when spoken. \n        For example, when you see 'https://google.com/foo-2' you output something like, 'https colon slash slash google dot com slash foo dash two'\n        When creating your fragments, you should break fragments up by sentence if possible. Don't break up the sentence in places where having it in two fragments would sound weird.\n        **Output your results as a JSON object with the format { fragments: string[] } Output RAW JSON only**",
-                                tools: api.tools
+                                tools: []
                             })];
                     case 3:
                         sentenceSplit = _b.sent();
@@ -198,3 +198,4 @@ exports.default = {
     },
     nextState: null
 };
+//# sourceMappingURL=say_aloud.js.map

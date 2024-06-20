@@ -28,8 +28,8 @@ export default {
 
 {
 schema: {
-"name": "eval", // function name
-"description": "Evaluate a JavaScript expression and return its result", // description includes what the function does and what it returns 
+"name": "eval",
+"description": "Evaluate a JavaScript expression and return its result",
 "input_schema": {
 "type": "object",
 "properties": {
